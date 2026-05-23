@@ -22,6 +22,7 @@ const timerCountdown = document.getElementById("timer-countdown");
 const appStatus = document.getElementById("app-status");
 const beatIndicators = document.getElementById("beat-indicators");
 const sweepBar = document.getElementById("sweep-bar");
+const catAscii = document.getElementById("cat-ascii");
 
 // Metronome Application State
 let isPlaying = false;
@@ -271,6 +272,11 @@ function setupEventListeners() {
       adjustBpm(-1);
     }
   });
+
+  // Cat Click Interaction
+  if (catAscii) {
+    catAscii.addEventListener("click", meowCat);
+  }
 }
 
 // Reset variables relating to beat sequence
@@ -651,6 +657,9 @@ function triggerVisualBeat(beatIndex, isAccent) {
     void bpmDisplay.offsetWidth;
     bpmDisplay.classList.add("pulse");
   }
+  
+  // Pulse the cat art on every beat
+  pulseCat(isAccent);
 }
 
 // Timer Functions
@@ -726,6 +735,47 @@ function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+// Interactive Cat Art helpers
+let meowTimeout = null;
+function meowCat() {
+  if (!catAscii) return;
+  if (meowTimeout) clearTimeout(meowTimeout);
+  
+  const meowTexts = ["MEOW!", "PURR~", "NYAN!", "♥MEOW♥", "HELLO!"];
+  const randomText = meowTexts[Math.floor(Math.random() * meowTexts.length)];
+  
+  catAscii.textContent = `  ${randomText}  /\\_/\\\n       \\\\(=^o^=)\n        (")_(")`;
+  catAscii.classList.add("cat-pulse-accent");
+  
+  meowTimeout = setTimeout(() => {
+    catAscii.textContent = ` /\\_/\\\n(=^.^=)\n (")_(")`;
+    catAscii.classList.remove("cat-pulse-accent");
+  }, 800);
+}
+
+function pulseCat(isAccent) {
+  if (!catAscii) return;
+  
+  // Ignore beat pulsing if the cat is currently meowing
+  if (meowTimeout && catAscii.textContent.includes("o")) return;
+  
+  if (isAccent) {
+    catAscii.textContent = ` /\\_/\\\n(=~.^=)\n (")_(")`;
+    catAscii.classList.add("cat-pulse-accent");
+  } else {
+    catAscii.textContent = ` /\\_/\\\n(=^.^=)\n (")_(")`;
+    catAscii.classList.add("cat-pulse");
+  }
+  
+  setTimeout(() => {
+    // Only reset text if we are not currently meowing
+    if (meowTimeout && catAscii.textContent.includes("o")) return;
+    
+    catAscii.textContent = ` /\\_/\\\n(=^.^=)\n (")_(")`;
+    catAscii.classList.remove("cat-pulse", "cat-pulse-accent");
+  }, 150);
 }
 
 // Run Initialization

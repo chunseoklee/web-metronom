@@ -101,6 +101,45 @@ h1 {
   letter-spacing: -0.5px;
 }
 
+.header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.cat-ascii {
+  font-family: monospace;
+  font-size: 0.65rem;
+  line-height: 1.1;
+  color: var(--accent-cyan);
+  opacity: 0.8;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275), color 0.1s ease, opacity 0.2s ease;
+  margin: 0;
+  padding: 0;
+  text-shadow: 0 0 8px rgba(0, 242, 254, 0.3);
+}
+
+.cat-ascii:hover {
+  color: var(--accent-cyan);
+  opacity: 1;
+  text-shadow: 0 0 12px rgba(0, 242, 254, 0.6);
+  transform: scale(1.08);
+}
+
+.cat-pulse {
+  transform: translateY(-2px) scale(1.05);
+  color: var(--accent-cyan) !important;
+}
+
+.cat-pulse-accent {
+  transform: translateY(-4px) scale(1.1);
+  color: var(--beat-accent) !important;
+  text-shadow: 0 0 15px rgba(255, 42, 95, 0.6) !important;
+}
+
 .badge {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
