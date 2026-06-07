@@ -377,8 +377,8 @@ function updateActivePresetPill() {
 }
 
 // Toggle play state
-function togglePlay() {
-  ensureAudioContext();
+async function togglePlay() {
+  await ensureAudioContext();
 
   isPlaying = !isPlaying;
   
@@ -825,13 +825,13 @@ function pulseCat(isAccent) {
 }
 
 // Helper to ensure audio context is running and active
-function ensureAudioContext() {
+async function ensureAudioContext() {
   if (!audioContext) {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     generateNoiseBuffer();
   }
   if (audioContext.state === "suspended") {
-    audioContext.resume();
+    await audioContext.resume();
   }
 }
 
@@ -936,22 +936,22 @@ function setReferenceFreq(val) {
 }
 
 // Toggle reference tone playing status
-function toggleReferenceTone() {
-  ensureAudioContext();
+async function toggleReferenceTone() {
+  await ensureAudioContext();
   
   if (isTonePlaying) {
     stopReferenceTone();
   } else {
     stopMicTuner();
-    startReferenceTone();
+    await startReferenceTone();
   }
 }
 
 // Start reference A (442 Hz) generator
-function startReferenceTone() {
+async function startReferenceTone() {
   if (isTonePlaying) return;
   
-  ensureAudioContext();
+  await ensureAudioContext();
   
   referenceOscillator = audioContext.createOscillator();
   referenceGainNode = audioContext.createGain();
@@ -1002,14 +1002,14 @@ function initMicTuner() {
 }
 
 // Toggle Mic Instrument Tuner status
-function toggleMicTuner() {
-  ensureAudioContext();
+async function toggleMicTuner() {
+  await ensureAudioContext();
   
   if (isMicTunerRunning) {
     stopMicTuner();
   } else {
     stopReferenceTone();
-    startMicTuner();
+    await startMicTuner();
   }
 }
 
@@ -1021,7 +1021,7 @@ async function startMicTuner() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStream = stream;
     
-    ensureAudioContext();
+    await ensureAudioContext();
     
     mediaStreamSource = audioContext.createMediaStreamSource(stream);
     analyserNode = audioContext.createAnalyser();
