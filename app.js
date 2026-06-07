@@ -24,6 +24,38 @@ const beatIndicators = document.getElementById("beat-indicators");
 const sweepBar = document.getElementById("sweep-bar");
 const catAscii = document.getElementById("cat-ascii");
 
+// Tab Controls DOM
+const tabBtnMetronome = document.getElementById("tab-btn-metronome");
+const tabBtnTuner = document.getElementById("tab-btn-tuner");
+const metronomeView = document.getElementById("metronome-view");
+const tunerView = document.getElementById("tuner-view");
+
+// Tuner Mode DOM
+const tunerModeControl = document.getElementById("tuner-mode-control");
+const micTunerSection = document.getElementById("mic-tuner-section");
+const toneTunerSection = document.getElementById("tone-tuner-section");
+
+// Mic Tuner DOM
+const btnToggleMic = document.getElementById("btn-toggle-mic");
+const detectedNote = document.getElementById("detected-note");
+const detectedCents = document.getElementById("detected-cents");
+const detectedFreq = document.getElementById("detected-freq");
+const tunerNeedleGroup = document.getElementById("tuner-needle-group");
+const gaugeGlowEffect = document.getElementById("gauge-glow-effect");
+
+// Tone Generator DOM
+const toneFreqDisplay = document.getElementById("tone-freq-display");
+const toneFreqRange = document.getElementById("tone-freq-range");
+const btnToneSub = document.getElementById("btn-tone-sub");
+const btnToneAdd = document.getElementById("btn-tone-add");
+const toneWaveformSelect = document.getElementById("tone-waveform-select");
+const toneVolumeSlider = document.getElementById("tone-volume-slider");
+const btnToggleTone = document.getElementById("btn-toggle-tone");
+const tonePlayIcon = document.getElementById("tone-play-icon");
+const toneStopIcon = document.getElementById("tone-stop-icon");
+const toneBtnText = document.getElementById("tone-btn-text");
+const toneVolumeIcon = document.getElementById("tone-volume-icon");
+
 // Metronome Application State
 let isPlaying = false;
 let bpm = 120;
@@ -36,6 +68,21 @@ let soundTheme = "woodblock";
 let timerDuration = 0; // 0 = infinite, other values in seconds
 let timerRemaining = 0;
 let timerIntervalId = null;
+
+// Tuner Application State (Mic & Tone)
+let isMicTunerRunning = false;
+let mediaStreamSource = null;
+let analyserNode = null;
+let audioAnalyserBuffer = null;
+let animationFrameId = null;
+let localStream = null;
+
+let referenceOscillator = null;
+let referenceGainNode = null;
+let isTonePlaying = false;
+let referenceFreq = 442;
+let referenceWaveform = "sine";
+let referenceVolume = 0.5;
 
 // Audio Variables
 let audioContext = null;
@@ -77,6 +124,12 @@ function init() {
   updateTempoText();
   renderBeatDots();
   setupEventListeners();
+  
+  // Tuner initializations
+  initTabs();
+  initTunerModeControl();
+  initReferenceTone();
+  initMicTuner();
   
   // Start the animation loop for visual sync
   requestAnimationFrame(drawVisuals);
@@ -325,14 +378,7 @@ function updateActivePresetPill() {
 
 // Toggle play state
 function togglePlay() {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    generateNoiseBuffer();
-  }
-  
-  if (audioContext.state === "suspended") {
-    audioContext.resume();
-  }
+  ensureAudioContext();
 
   isPlaying = !isPlaying;
   
@@ -776,6 +822,420 @@ function pulseCat(isAccent) {
     catAscii.textContent = ` /\\_/\\\n(=^.^=)\n (")_(")`;
     catAscii.classList.remove("cat-pulse", "cat-pulse-accent");
   }, 150);
+}
+
+// Helper to ensure audio context is running and active
+function ensureAudioContext() {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    generateNoiseBuffer();
+  }
+  if (audioContext.state === "suspended") {
+    audioContext.resume();
+  }
+}
+
+// Tab Switching logic
+function initTabs() {
+  tabBtnMetronome.addEventListener("click", () => {
+    if (tabBtnMetronome.classList.contains("active")) return;
+    
+    tabBtnMetronome.classList.add("active");
+    tabBtnTuner.classList.remove("active");
+    metronomeView.classList.add("active");
+    tunerView.classList.remove("active");
+    
+    // Stop any active tuner processes
+    stopMicTuner();
+    stopReferenceTone();
+  });
+
+  tabBtnTuner.addEventListener("click", () => {
+    if (tabBtnTuner.classList.contains("active")) return;
+    
+    tabBtnTuner.classList.add("active");
+    tabBtnMetronome.classList.remove("active");
+    tunerView.classList.add("active");
+    metronomeView.classList.remove("active");
+    
+    // Stop the metronome if it is playing
+    if (isPlaying) {
+      togglePlay();
+    }
+  });
+}
+
+// Switch between Mic Tuner and Tone Tuner Modes
+function initTunerModeControl() {
+  tunerModeControl.querySelectorAll(".segment-option").forEach(opt => {
+    opt.addEventListener("click", () => {
+      tunerModeControl.querySelectorAll(".segment-option").forEach(o => o.classList.remove("active"));
+      opt.classList.add("active");
+      
+      const mode = opt.dataset.mode;
+      if (mode === "mic") {
+        micTunerSection.classList.add("active");
+        toneTunerSection.classList.remove("active");
+        stopReferenceTone();
+      } else {
+        toneTunerSection.classList.add("active");
+        micTunerSection.classList.remove("active");
+        stopMicTuner();
+      }
+    });
+  });
+}
+
+// Initialize Reference Tone controls
+function initReferenceTone() {
+  toneFreqRange.addEventListener("input", (e) => {
+    setReferenceFreq(parseInt(e.target.value));
+  });
+  
+  btnToneSub.addEventListener("click", () => {
+    setReferenceFreq(referenceFreq - 1);
+  });
+  
+  btnToneAdd.addEventListener("click", () => {
+    setReferenceFreq(referenceFreq + 1);
+  });
+  
+  toneWaveformSelect.addEventListener("change", (e) => {
+    referenceWaveform = e.target.value;
+    if (referenceOscillator) {
+      referenceOscillator.type = referenceWaveform;
+    }
+  });
+  
+  toneVolumeSlider.addEventListener("input", (e) => {
+    referenceVolume = parseFloat(e.target.value);
+    if (referenceVolume === 0) {
+      toneVolumeIcon.innerText = "🔇";
+    } else if (referenceVolume < 0.4) {
+      toneVolumeIcon.innerText = "🔈";
+    } else {
+      toneVolumeIcon.innerText = "🔊";
+    }
+    if (referenceGainNode) {
+      referenceGainNode.gain.setValueAtTime(referenceVolume, audioContext.currentTime);
+    }
+  });
+  
+  btnToggleTone.addEventListener("click", toggleReferenceTone);
+}
+
+// Update Reference Tone Frequency
+function setReferenceFreq(val) {
+  referenceFreq = Math.max(435, Math.min(445, val));
+  toneFreqDisplay.innerText = referenceFreq;
+  toneFreqRange.value = referenceFreq;
+  
+  if (referenceOscillator) {
+    referenceOscillator.frequency.setValueAtTime(referenceFreq, audioContext.currentTime);
+  }
+}
+
+// Toggle reference tone playing status
+function toggleReferenceTone() {
+  ensureAudioContext();
+  
+  if (isTonePlaying) {
+    stopReferenceTone();
+  } else {
+    stopMicTuner();
+    startReferenceTone();
+  }
+}
+
+// Start reference A (442 Hz) generator
+function startReferenceTone() {
+  if (isTonePlaying) return;
+  
+  ensureAudioContext();
+  
+  referenceOscillator = audioContext.createOscillator();
+  referenceGainNode = audioContext.createGain();
+  
+  referenceOscillator.type = referenceWaveform;
+  referenceOscillator.frequency.setValueAtTime(referenceFreq, audioContext.currentTime);
+  
+  referenceGainNode.gain.setValueAtTime(referenceVolume, audioContext.currentTime);
+  
+  referenceOscillator.connect(referenceGainNode);
+  referenceGainNode.connect(audioContext.destination);
+  
+  referenceOscillator.start();
+  
+  isTonePlaying = true;
+  btnToggleTone.classList.add("active");
+  tonePlayIcon.style.display = "none";
+  toneStopIcon.style.display = "inline-block";
+  toneBtnText.innerText = "기준음 정지";
+}
+
+// Stop reference A (442 Hz) generator
+function stopReferenceTone() {
+  if (!isTonePlaying) return;
+  
+  if (referenceOscillator) {
+    try {
+      referenceOscillator.stop();
+    } catch (e) {}
+    referenceOscillator.disconnect();
+    referenceOscillator = null;
+  }
+  if (referenceGainNode) {
+    referenceGainNode.disconnect();
+    referenceGainNode = null;
+  }
+  
+  isTonePlaying = false;
+  btnToggleTone.classList.remove("active");
+  tonePlayIcon.style.display = "inline-block";
+  toneStopIcon.style.display = "none";
+  toneBtnText.innerText = "기준음 재생";
+}
+
+// Initialize Mic Instrument Tuner controls
+function initMicTuner() {
+  btnToggleMic.addEventListener("click", toggleMicTuner);
+}
+
+// Toggle Mic Instrument Tuner status
+function toggleMicTuner() {
+  ensureAudioContext();
+  
+  if (isMicTunerRunning) {
+    stopMicTuner();
+  } else {
+    stopReferenceTone();
+    startMicTuner();
+  }
+}
+
+// Start Mic Instrument Tuner (FFT Analysis + Autocorrelation)
+async function startMicTuner() {
+  if (isMicTunerRunning) return;
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStream = stream;
+    
+    ensureAudioContext();
+    
+    mediaStreamSource = audioContext.createMediaStreamSource(stream);
+    analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 2048;
+    
+    mediaStreamSource.connect(analyserNode);
+    audioAnalyserBuffer = new Float32Array(analyserNode.fftSize);
+    
+    isMicTunerRunning = true;
+    btnToggleMic.classList.add("active");
+    document.getElementById("mic-btn-text").innerText = "마이크 튜너 정지";
+    
+    updatePitch();
+  } catch (err) {
+    console.error("Microphone access denied or error:", err);
+    alert("마이크 권한이 필요합니다. 브라우저 설정에서 권한을 허용해 주세요.");
+    stopMicTuner();
+  }
+}
+
+// Stop Mic Instrument Tuner
+function stopMicTuner() {
+  if (!isMicTunerRunning) return;
+  
+  isMicTunerRunning = false;
+  btnToggleMic.classList.remove("active");
+  document.getElementById("mic-btn-text").innerText = "마이크 튜너 시작";
+  
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+  
+  if (mediaStreamSource) {
+    mediaStreamSource.disconnect();
+    mediaStreamSource = null;
+  }
+  
+  if (analyserNode) {
+    analyserNode.disconnect();
+    analyserNode = null;
+  }
+  
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+  
+  // Reset tuner UI
+  detectedNote.innerText = "--";
+  detectedNote.classList.remove("in-tune");
+  detectedCents.innerText = "마이크를 켜주세요";
+  detectedFreq.innerText = "0.0 Hz";
+  tunerNeedleGroup.style.transform = "rotate(0deg)";
+  
+  gaugeGlowEffect.className = "gauge-glow";
+  
+  const needleLine = tunerNeedleGroup.querySelector(".tuner-needle");
+  const needleCircle = tunerNeedleGroup.querySelector("circle");
+  if (needleLine && needleCircle) {
+    needleLine.style.stroke = "var(--accent-cyan)";
+    needleLine.style.filter = "drop-shadow(0 0 6px var(--accent-cyan))";
+    needleCircle.style.fill = "var(--accent-cyan)";
+  }
+}
+
+// Loop to analyze microphone pitch
+function updatePitch() {
+  if (!isMicTunerRunning) return;
+  
+  analyserNode.getFloatTimeDomainData(audioAnalyserBuffer);
+  const pitch = autoCorrelate(audioAnalyserBuffer, audioContext.sampleRate);
+  
+  if (pitch === -1) {
+    detectedCents.innerText = "소리를 내어주세요";
+  } else {
+    const freq = pitch;
+    detectedFreq.innerText = `${freq.toFixed(1)} Hz`;
+    
+    // Calculate cents deviation relative to A4 = 442 Hz
+    const n = 12 * Math.log2(freq / 442);
+    const midiNote = Math.round(n) + 69;
+    const cents = Math.round((n - Math.round(n)) * 100);
+    
+    if (midiNote >= 12 && midiNote <= 127) {
+      const noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+      const noteName = noteStrings[midiNote % 12];
+      const octave = Math.floor(midiNote / 12) - 1;
+      
+      const subscriptOctave = getSubscriptNumber(octave);
+      detectedNote.innerHTML = `${noteName}${subscriptOctave}`;
+      
+      let centsText = "";
+      const inTuneLimit = 3; // Cents threshold for in-tune detection
+      
+      const needleLine = tunerNeedleGroup.querySelector(".tuner-needle");
+      const needleCircle = tunerNeedleGroup.querySelector("circle");
+      
+      if (Math.abs(cents) <= inTuneLimit) {
+        centsText = "맞음 (In Tune)";
+        detectedNote.classList.add("in-tune");
+        gaugeGlowEffect.className = "gauge-glow in-tune";
+        
+        if (needleLine && needleCircle) {
+          needleLine.style.stroke = "#00ff96";
+          needleLine.style.filter = "drop-shadow(0 0 8px rgba(0, 255, 150, 0.7))";
+          needleCircle.style.fill = "#00ff96";
+        }
+      } else if (cents < 0) {
+        centsText = `${Math.abs(cents)} cents flat (낮음)`;
+        detectedNote.classList.remove("in-tune");
+        gaugeGlowEffect.className = "gauge-glow flat";
+        
+        if (needleLine && needleCircle) {
+          needleLine.style.stroke = "var(--beat-accent)";
+          needleLine.style.filter = "drop-shadow(0 0 8px rgba(255, 42, 95, 0.5))";
+          needleCircle.style.fill = "var(--beat-accent)";
+        }
+      } else {
+        centsText = `${cents} cents sharp (높음)`;
+        detectedNote.classList.remove("in-tune");
+        gaugeGlowEffect.className = "gauge-glow sharp";
+        
+        if (needleLine && needleCircle) {
+          needleLine.style.stroke = "#ff7e40";
+          needleLine.style.filter = "drop-shadow(0 0 8px rgba(255, 126, 64, 0.5))";
+          needleCircle.style.fill = "#ff7e40";
+        }
+      }
+      
+      detectedCents.innerText = centsText;
+      
+      const clampedCents = Math.max(-50, Math.min(50, cents));
+      const angle = (clampedCents / 50) * 60;
+      tunerNeedleGroup.style.transform = `rotate(${angle}deg)`;
+    }
+  }
+  
+  animationFrameId = requestAnimationFrame(updatePitch);
+}
+
+// Convert numbers to subscript strings for octave representation
+function getSubscriptNumber(num) {
+  const subscripts = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"];
+  if (num >= 0 && num <= 9) return subscripts[num];
+  return num.toString();
+}
+
+// Autocorrelation pitch detection algorithm
+function autoCorrelate(buffer, sampleRate) {
+  const SIZE = buffer.length;
+  let sum = 0;
+  for (let i = 0; i < SIZE; i++) {
+    sum += buffer[i] * buffer[i];
+  }
+  const rms = Math.sqrt(sum / SIZE);
+  if (rms < 0.015) { // Not enough signal
+    return -1;
+  }
+
+  let r1 = 0;
+  let r2 = SIZE - 1;
+  const thres = 0.2;
+  for (let i = 0; i < SIZE / 2; i++) {
+    if (Math.abs(buffer[i]) < thres) {
+      r1 = i;
+      break;
+    }
+  }
+  for (let i = SIZE - 1; i >= SIZE / 2; i--) {
+    if (Math.abs(buffer[i]) < thres) {
+      r2 = i;
+      break;
+    }
+  }
+
+  const buf = buffer.slice(r1, r2);
+  const len = buf.length;
+
+  const c = new Float32Array(Math.floor(len / 2) + 1);
+  const searchLimit = Math.floor(len / 2);
+  for (let i = 0; i <= searchLimit; i++) {
+    let sum = 0;
+    for (let j = 0; j < len - i; j++) {
+      sum += buf[j] * buf[j + i];
+    }
+    c[i] = sum;
+  }
+
+  let d = 0;
+  while (d < searchLimit && c[d] > c[d + 1]) d++;
+  let maxval = -1;
+  let maxpos = -1;
+  for (let i = d; i < searchLimit; i++) {
+    if (c[i] > maxval) {
+      maxval = c[i];
+      maxpos = i;
+    }
+  }
+
+  let T0 = maxpos;
+  if (T0 > 0 && T0 < searchLimit) {
+    const x1 = c[T0 - 1];
+    const x2 = c[T0];
+    const x3 = c[T0 + 1];
+    const a = (x1 + x3 - 2 * x2) / 2;
+    const b = (x3 - x1) / 2;
+    if (a) T0 = T0 - b / (2 * a);
+  }
+
+  if (T0 === 0 || isNaN(T0)) return -1;
+  const freq = sampleRate / T0;
+  if (isNaN(freq) || freq === Infinity || freq < 20 || freq > 5000) return -1;
+  return freq;
 }
 
 // Run Initialization

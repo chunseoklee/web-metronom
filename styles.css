@@ -742,3 +742,225 @@ footer a:hover {
     width: 100%;
   }
 }
+
+/* Tabbed Layout */
+.tab-content {
+  display: none;
+}
+.tab-content.active {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* Tabs styles */
+.app-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 16px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  margin-top: -10px;
+}
+
+.tab-btn {
+  flex: 1;
+  text-align: center;
+  padding: 12px 0;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: var(--transition-smooth);
+  user-select: none;
+  letter-spacing: 0.5px;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  background: var(--accent-gradient);
+  color: var(--bg-primary);
+  box-shadow: var(--accent-glow);
+}
+
+/* Tuner Specific Styles */
+.tuner-mode-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tuner-section-content {
+  display: none;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.tuner-section-content.active {
+  display: flex;
+}
+
+/* Gauge styling */
+.gauge-container {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.tuner-gauge {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  overflow: visible;
+}
+
+.gauge-arc-bg {
+  stroke: rgba(255, 255, 255, 0.06);
+}
+
+.gauge-tick {
+  stroke: var(--text-muted);
+  opacity: 0.6;
+}
+
+.gauge-tick-center {
+  stroke: var(--accent-cyan);
+  filter: drop-shadow(0 0 4px var(--accent-cyan));
+}
+
+.gauge-label {
+  font-family: 'Outfit', sans-serif;
+  font-size: 11px;
+}
+
+.tuner-needle {
+  filter: drop-shadow(0 0 6px var(--accent-cyan));
+  transition: stroke 0.2s ease, filter 0.2s ease;
+}
+
+/* Dynamic gauge glow effect */
+.gauge-glow {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.08) 0%, transparent 70%);
+  top: 15px;
+  pointer-events: none;
+  z-index: 0;
+  transition: background 0.3s ease;
+}
+
+.gauge-glow.in-tune {
+  background: radial-gradient(circle, rgba(0, 255, 150, 0.12) 0%, transparent 70%);
+}
+
+.gauge-glow.flat {
+  background: radial-gradient(circle, rgba(255, 42, 95, 0.08) 0%, transparent 70%);
+}
+
+.gauge-glow.sharp {
+  background: radial-gradient(circle, rgba(255, 126, 64, 0.08) 0%, transparent 70%);
+}
+
+/* Tuner display values */
+.tuner-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.detected-note {
+  font-family: 'Outfit', sans-serif;
+  font-size: 4rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--accent-cyan);
+  text-shadow: var(--accent-glow);
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+.detected-note.in-tune {
+  color: #00ff96;
+  text-shadow: 0 0 20px rgba(0, 255, 150, 0.6);
+}
+
+.detected-cents {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.detected-freq {
+  font-size: 0.8rem;
+  font-family: monospace;
+  color: var(--text-secondary);
+}
+
+/* Button style */
+.btn-tuner-action {
+  width: 100%;
+  height: 56px;
+  border: none;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-smooth);
+}
+
+.btn-tuner-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.btn-tuner-action:active {
+  transform: translateY(1px);
+}
+
+.btn-tuner-action.active {
+  background: var(--accent-gradient);
+  color: var(--bg-primary);
+  box-shadow: var(--accent-glow);
+  border-color: transparent;
+}
+
+.btn-tuner-action.active:hover {
+  box-shadow: 0 0 25px rgba(0, 242, 254, 0.8);
+}
+
+/* Mobile responsive tuner overrides */
+@media (max-width: 480px) {
+  .btn-tuner-action {
+    height: 50px;
+    font-size: 0.95rem;
+  }
+  .detected-note {
+    font-size: 3.5rem;
+  }
+}
