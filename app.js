@@ -23,6 +23,8 @@ const appStatus = document.getElementById("app-status");
 const beatIndicators = document.getElementById("beat-indicators");
 const sweepBar = document.getElementById("sweep-bar");
 const catAscii = document.getElementById("cat-ascii");
+const visualizerCanvas = document.getElementById("visualizer-canvas");
+let visualizerCtx = null;
 
 // Tab Controls DOM
 const tabBtnMetronome = document.getElementById("tab-btn-metronome");
@@ -120,6 +122,9 @@ const tempoPresets = [
 
 // Initialize Metronome
 function init() {
+  if (visualizerCanvas) {
+    visualizerCtx = visualizerCanvas.getContext("2d");
+  }
   setupWorker();
   updateTempoText();
   renderBeatDots();
@@ -510,7 +515,12 @@ function scheduleNote(beatNumber, subNumber, time) {
 
   const gainNode = audioContext.createGain();
   gainNode.gain.setValueAtTime(noteVolume, time);
-  gainNode.connect(audioContext.destination);
+  
+  if (metronomeAnalyser) {
+    gainNode.connect(metronomeAnalyser);
+  } else {
+    gainNode.connect(audioContext.destination);
+  }
 
   // Play based on selected theme
   if (soundTheme === "digital") {
@@ -527,12 +537,12 @@ function playDigitalBeep(beatNumber, subNumber, destinationNode, time) {
   const osc = audioContext.createOscillator();
   osc.type = "sine";
   
-  // Frequencies: Accent (1000Hz), Regular Beat (800Hz), Subdivisions (600Hz)
-  let freq = 800;
+  // Frequencies: Accent (1500Hz), Regular Beat (1200Hz), Subdivisions (900Hz)
+  let freq = 1200;
   if (beatNumber === 0 && subNumber === 0) {
-    freq = 1000;
+    freq = 1500;
   } else if (subNumber > 0) {
-    freq = 600;
+    freq = 900;
   }
   
   osc.frequency.setValueAtTime(freq, time);
@@ -553,15 +563,16 @@ function playWoodblock(beatNumber, subNumber, destinationNode, time) {
   osc1.type = "sine";
   osc2.type = "sine";
   
-  let freq1 = 850;
-  let freq2 = 1275; // Harmonic ratio 1.5
+  // Frequencies (higher pitch): Accent (1600Hz / 2400Hz), Regular Beat (1200Hz / 1800Hz), Subdivisions (900Hz / 1350Hz)
+  let freq1 = 1200;
+  let freq2 = 1800; // Harmonic ratio 1.5
   
   if (beatNumber === 0 && subNumber === 0) {
-    freq1 = 1200;
-    freq2 = 1800;
+    freq1 = 1600;
+    freq2 = 2400;
   } else if (subNumber > 0) {
-    freq1 = 650;
-    freq2 = 975;
+    freq1 = 900;
+    freq2 = 1350;
   }
   
   osc1.frequency.setValueAtTime(freq1, time);
@@ -593,15 +604,16 @@ function playRimshot(beatNumber, subNumber, destinationNode, time) {
   const filter = audioContext.createBiquadFilter();
   filter.type = "bandpass";
   
-  let filterFreq = 900;
-  let bodyFreq = 1000;
+  // Frequencies (higher pitch for sharper click): Accent (1800Hz / 1900Hz), Regular Beat (1300Hz / 1400Hz), Subdivisions (950Hz / 1000Hz)
+  let filterFreq = 1300;
+  let bodyFreq = 1400;
   
   if (beatNumber === 0 && subNumber === 0) {
-    filterFreq = 1400;
-    bodyFreq = 1500;
+    filterFreq = 1800;
+    bodyFreq = 1900;
   } else if (subNumber > 0) {
-    filterFreq = 650;
-    bodyFreq = 700;
+    filterFreq = 950;
+    bodyFreq = 1000;
   }
   
   filter.frequency.setValueAtTime(filterFreq, time);
@@ -676,6 +688,74 @@ function drawVisuals() {
   } else {
     // Reset sweep to center when stopped
     sweepBar.style.left = "50%";
+  }
+  
+  // 3. Draw beautiful oscilloscope background wave
+  if (visualizerCanvas && visualizerCtx) {
+    if (visualizerCanvas.width !== visualizerCanvas.clientWidth || visualizerCanvas.height !== visualizerCanvas.clientHeight) {
+      visualizerCanvas.width = visualizerCanvas.clientWidth;
+      visualizerCanvas.height = visualizerCanvas.clientHeight;
+    }
+    
+    const width = visualizerCanvas.width;
+    const height = visualizerCanvas.height;
+    
+    visualizerCtx.clearRect(0, 0, width, height);
+    
+    visualizerCtx.lineWidth = 3;
+    
+    // Gradient matching standard/accent colors (cyan to magenta)
+    const gradient = visualizerCtx.createLinearGradient(0, 0, width, 0);
+    gradient.addColorStop(0, "rgba(0, 242, 254, 0.4)");
+    gradient.addColorStop(0.5, "rgba(255, 42, 95, 0.4)");
+    gradient.addColorStop(1, "rgba(0, 242, 254, 0.4)");
+    visualizerCtx.strokeStyle = gradient;
+    
+    visualizerCtx.shadowBlur = 10;
+    visualizerCtx.shadowColor = "rgba(0, 242, 254, 0.35)";
+    
+    visualizerCtx.beginPath();
+    
+    if (metronomeAnalyser && isPlaying) {
+      metronomeAnalyser.getByteTimeDomainData(canvasBuffer);
+      
+      const sliceWidth = width / canvasBuffer.length;
+      let x = 0;
+      
+      for (let i = 0; i < canvasBuffer.length; i++) {
+        const v = canvasBuffer[i] / 128.0;
+        const y = (v * height) / 2;
+        
+        if (i === 0) {
+          visualizerCtx.moveTo(x, y);
+        } else {
+          visualizerCtx.lineTo(x, y);
+        }
+        x += sliceWidth;
+      }
+    } else {
+      // Draw a gentle ambient sine wave when idle
+      const points = 100;
+      const sliceWidth = width / points;
+      let x = 0;
+      
+      for (let i = 0; i <= points; i++) {
+        const speed = performance.now() * 0.003;
+        const amplitude = 3; // subtle idle wave
+        const freqCoeff = 0.04;
+        const y = (height / 2) + Math.sin(x * freqCoeff - speed) * amplitude;
+        
+        if (i === 0) {
+          visualizerCtx.moveTo(x, y);
+        } else {
+          visualizerCtx.lineTo(x, y);
+        }
+        x += sliceWidth;
+      }
+    }
+    
+    visualizerCtx.stroke();
+    visualizerCtx.shadowBlur = 0;
   }
   
   requestAnimationFrame(drawVisuals);
@@ -768,7 +848,12 @@ function playTimerEndChime() {
   
   osc1.connect(gainNode);
   osc2.connect(gainNode);
-  gainNode.connect(audioContext.destination);
+  
+  if (metronomeAnalyser) {
+    gainNode.connect(metronomeAnalyser);
+  } else {
+    gainNode.connect(audioContext.destination);
+  }
   
   osc1.start(time);
   osc2.start(time);
@@ -824,11 +909,21 @@ function pulseCat(isAccent) {
   }, 150);
 }
 
+let metronomeAnalyser = null;
+let canvasBuffer = null;
+
 // Helper to ensure audio context is running and active
 async function ensureAudioContext() {
   if (!audioContext) {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     generateNoiseBuffer();
+    
+    // Initialize Analyser for metronome visualization
+    metronomeAnalyser = audioContext.createAnalyser();
+    metronomeAnalyser.fftSize = 256;
+    metronomeAnalyser.connect(audioContext.destination);
+    
+    canvasBuffer = new Uint8Array(metronomeAnalyser.frequencyBinCount);
   }
   if (audioContext.state === "suspended") {
     await audioContext.resume();
