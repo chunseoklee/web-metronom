@@ -532,10 +532,13 @@ function scheduleNote(beatNumber, subNumber, time) {
   }
 }
 
-// Sound Synthesizer 1: Digital Beep (Sine waves)
+// Sound Synthesizer 1: Digital Beep (Sine waves with dual harmonic blend)
 function playDigitalBeep(beatNumber, subNumber, destinationNode, time) {
   const osc = audioContext.createOscillator();
+  const oscHarmonic = audioContext.createOscillator(); // Add an octave harmonic to cut through better
+  
   osc.type = "sine";
+  oscHarmonic.type = "sine";
   
   // Frequencies: Accent (1500Hz), Regular Beat (1200Hz), Subdivisions (900Hz)
   let freq = 1200;
@@ -546,39 +549,82 @@ function playDigitalBeep(beatNumber, subNumber, destinationNode, time) {
   }
   
   osc.frequency.setValueAtTime(freq, time);
-  osc.connect(destinationNode);
+  oscHarmonic.frequency.setValueAtTime(freq * 2, time); // Octave harmonic for brightness
   
-  // Quick decay
-  const duration = subNumber > 0 ? 0.03 : 0.05;
-  destinationNode.gain.exponentialRampToValueAtTime(0.001, time + duration);
+  // Anchor volume envelope decay to make it robust and prevent browser bugs
+  const noteVolume = destinationNode.gain.value;
+  destinationNode.gain.cancelScheduledValues(time);
+  destinationNode.gain.setValueAtTime(noteVolume, time);
+  
+  const duration = subNumber > 0 ? 0.035 : 0.055;
+  destinationNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+  
+  // Blend oscillator and harmonic
+  const blendGain = audioContext.createGain();
+  blendGain.gain.setValueAtTime(0.7, time); // Core tone
+  
+  const harmonicGain = audioContext.createGain();
+  harmonicGain.gain.setValueAtTime(0.3, time); // Octave tone
+  
+  osc.connect(blendGain);
+  oscHarmonic.connect(harmonicGain);
+  
+  blendGain.connect(destinationNode);
+  harmonicGain.connect(destinationNode);
   
   osc.start(time);
+  oscHarmonic.start(time);
+  
   osc.stop(time + duration + 0.01);
+  oscHarmonic.stop(time + duration + 0.01);
 }
 
-// Sound Synthesizer 2: Woodblock (Two sine waves with quick harmonic blend)
+// Sound Synthesizer 2: Woodblock (Two sine waves with quick harmonic blend + strike click)
 function playWoodblock(beatNumber, subNumber, destinationNode, time) {
   const osc1 = audioContext.createOscillator();
   const osc2 = audioContext.createOscillator();
-  osc1.type = "sine";
+  const clickOsc = audioContext.createOscillator(); // High-frequency mallet strike click
+  
+  osc1.type = "triangle"; // Triangle wave for woody body
   osc2.type = "sine";
+  clickOsc.type = "sine";
   
   // Frequencies (higher pitch): Accent (1600Hz / 2400Hz), Regular Beat (1200Hz / 1800Hz), Subdivisions (900Hz / 1350Hz)
   let freq1 = 1200;
   let freq2 = 1800; // Harmonic ratio 1.5
+  let clickFreq = 3200;
   
   if (beatNumber === 0 && subNumber === 0) {
     freq1 = 1600;
     freq2 = 2400;
+    clickFreq = 4000;
   } else if (subNumber > 0) {
     freq1 = 900;
     freq2 = 1350;
+    clickFreq = 2500;
   }
   
   osc1.frequency.setValueAtTime(freq1, time);
   osc2.frequency.setValueAtTime(freq2, time);
+  clickOsc.frequency.setValueAtTime(clickFreq, time);
   
-  // Accent gets slightly stronger blend
+  // Anchor volume envelope decay to make it robust and prevent browser bugs
+  const noteVolume = destinationNode.gain.value;
+  destinationNode.gain.cancelScheduledValues(time);
+  destinationNode.gain.setValueAtTime(noteVolume, time);
+  
+  const duration = subNumber > 0 ? 0.03 : 0.05;
+  destinationNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+  
+  // Create click gain for high frequency strike click (lasts only 5ms)
+  const clickGain = audioContext.createGain();
+  clickGain.gain.setValueAtTime(0.8, time);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.005);
+  
+  clickOsc.connect(clickGain);
+  clickGain.connect(destinationNode);
+  
+  // Blend core bodies
   const blendGain = audioContext.createGain();
   blendGain.gain.setValueAtTime(1.0, time);
   
@@ -586,16 +632,16 @@ function playWoodblock(beatNumber, subNumber, destinationNode, time) {
   osc2.connect(blendGain);
   blendGain.connect(destinationNode);
   
-  const duration = subNumber > 0 ? 0.025 : 0.04;
-  destinationNode.gain.exponentialRampToValueAtTime(0.001, time + duration);
-  
   osc1.start(time);
   osc2.start(time);
+  clickOsc.start(time);
+  
   osc1.stop(time + duration + 0.01);
   osc2.stop(time + duration + 0.01);
+  clickOsc.stop(time + 0.01);
 }
 
-// Sound Synthesizer 3: Snare Rimshot (Bandpass filtered white noise burst)
+// Sound Synthesizer 3: Snare Rimshot (Bandpass filtered white noise burst + punchy body)
 function playRimshot(beatNumber, subNumber, destinationNode, time) {
   // Combine noise burst with brief high frequency body
   const noiseSource = audioContext.createBufferSource();
@@ -628,8 +674,13 @@ function playRimshot(beatNumber, subNumber, destinationNode, time) {
   bodyOsc.frequency.setValueAtTime(bodyFreq, time);
   bodyOsc.connect(destinationNode);
   
-  const duration = subNumber > 0 ? 0.03 : 0.045;
-  destinationNode.gain.exponentialRampToValueAtTime(0.001, time + duration);
+  // Anchor volume envelope decay to make it robust and prevent browser bugs
+  const noteVolume = destinationNode.gain.value;
+  destinationNode.gain.cancelScheduledValues(time);
+  destinationNode.gain.setValueAtTime(noteVolume, time);
+  
+  const duration = subNumber > 0 ? 0.035 : 0.05;
+  destinationNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
   
   noiseSource.start(time);
   bodyOsc.start(time);
@@ -911,18 +962,30 @@ function pulseCat(isAccent) {
 
 let metronomeAnalyser = null;
 let canvasBuffer = null;
+let masterCompressor = null;
 
 // Helper to ensure audio context is running and active
 async function ensureAudioContext() {
   if (!audioContext) {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     generateNoiseBuffer();
-    
+
     // Initialize Analyser for metronome visualization
     metronomeAnalyser = audioContext.createAnalyser();
     metronomeAnalyser.fftSize = 256;
-    metronomeAnalyser.connect(audioContext.destination);
-    
+
+    // Create dynamics compressor to dramatically increase perceived volume and snap without clipping
+    masterCompressor = audioContext.createDynamicsCompressor();
+    masterCompressor.threshold.setValueAtTime(-15, audioContext.currentTime);
+    masterCompressor.knee.setValueAtTime(10, audioContext.currentTime);
+    masterCompressor.ratio.setValueAtTime(12, audioContext.currentTime);
+    masterCompressor.attack.setValueAtTime(0.003, audioContext.currentTime); // quick 3ms attack to preserve but compress transient snap
+    masterCompressor.release.setValueAtTime(0.08, audioContext.currentTime);
+
+    // Route: metronome sound -> metronomeAnalyser -> masterCompressor -> destination
+    metronomeAnalyser.connect(masterCompressor);
+    masterCompressor.connect(audioContext.destination);
+
     canvasBuffer = new Uint8Array(metronomeAnalyser.frequencyBinCount);
   }
   if (audioContext.state === "suspended") {
