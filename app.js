@@ -943,6 +943,7 @@ function pulseCat(isAccent) {
 let metronomeAnalyser = null;
 let canvasBuffer = null;
 let masterCompressor = null;
+let masterTrebleBoost = null;
 let bluetoothKeepAliveOsc = null;
 
 // Helper to ensure audio context is running and active
@@ -955,6 +956,12 @@ async function ensureAudioContext() {
     metronomeAnalyser = audioContext.createAnalyser();
     metronomeAnalyser.fftSize = 256;
 
+    // Create a high-shelf filter to significantly boost treble (crispness/bite) for all sound themes
+    masterTrebleBoost = audioContext.createBiquadFilter();
+    masterTrebleBoost.type = "highshelf";
+    masterTrebleBoost.frequency.setValueAtTime(2000, audioContext.currentTime); // target frequencies above 2kHz
+    masterTrebleBoost.gain.setValueAtTime(10, audioContext.currentTime);        // +10dB boost to bring out maximum high-end bite
+
     // Create dynamics compressor to dramatically increase perceived volume and snap without clipping
     masterCompressor = audioContext.createDynamicsCompressor();
     masterCompressor.threshold.setValueAtTime(-15, audioContext.currentTime);
@@ -963,8 +970,9 @@ async function ensureAudioContext() {
     masterCompressor.attack.setValueAtTime(0.003, audioContext.currentTime); // quick 3ms attack to preserve but compress transient snap
     masterCompressor.release.setValueAtTime(0.08, audioContext.currentTime);
 
-    // Route: metronome sound -> metronomeAnalyser -> masterCompressor -> destination
-    metronomeAnalyser.connect(masterCompressor);
+    // Route: metronome sound -> metronomeAnalyser -> masterTrebleBoost -> masterCompressor -> destination
+    metronomeAnalyser.connect(masterTrebleBoost);
+    masterTrebleBoost.connect(masterCompressor);
     masterCompressor.connect(audioContext.destination);
 
     canvasBuffer = new Uint8Array(metronomeAnalyser.frequencyBinCount);
