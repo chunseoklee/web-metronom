@@ -514,7 +514,11 @@ function scheduleNote(beatNumber, subNumber, time) {
   if (noteVolume <= 0) return;
 
   const gainNode = audioContext.createGain();
+  
+  // Set and schedule the decay envelope cleanly here to ensure volume slider works perfectly
+  const duration = subNumber > 0 ? 0.035 : 0.05;
   gainNode.gain.setValueAtTime(noteVolume, time);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
   
   if (metronomeAnalyser) {
     gainNode.connect(metronomeAnalyser);
@@ -524,16 +528,16 @@ function scheduleNote(beatNumber, subNumber, time) {
 
   // Play based on selected theme
   if (soundTheme === "digital") {
-    playDigitalBeep(beatNumber, subNumber, gainNode, time);
+    playDigitalBeep(beatNumber, subNumber, gainNode, time, duration);
   } else if (soundTheme === "woodblock") {
-    playWoodblock(beatNumber, subNumber, gainNode, time);
+    playWoodblock(beatNumber, subNumber, gainNode, time, duration);
   } else if (soundTheme === "drum") {
-    playRimshot(beatNumber, subNumber, gainNode, time);
+    playRimshot(beatNumber, subNumber, gainNode, time, duration);
   }
 }
 
 // Sound Synthesizer 1: Digital Beep (Sine waves with dual harmonic blend)
-function playDigitalBeep(beatNumber, subNumber, destinationNode, time) {
+function playDigitalBeep(beatNumber, subNumber, destinationNode, time, duration) {
   const osc = audioContext.createOscillator();
   const oscHarmonic = audioContext.createOscillator(); // Add an octave harmonic to cut through better
   
@@ -550,14 +554,6 @@ function playDigitalBeep(beatNumber, subNumber, destinationNode, time) {
   
   osc.frequency.setValueAtTime(freq, time);
   oscHarmonic.frequency.setValueAtTime(freq * 2, time); // Octave harmonic for brightness
-  
-  // Anchor volume envelope decay to make it robust and prevent browser bugs
-  const noteVolume = destinationNode.gain.value;
-  destinationNode.gain.cancelScheduledValues(time);
-  destinationNode.gain.setValueAtTime(noteVolume, time);
-  
-  const duration = subNumber > 0 ? 0.035 : 0.055;
-  destinationNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
   
   // Blend oscillator and harmonic
   const blendGain = audioContext.createGain();
@@ -580,7 +576,7 @@ function playDigitalBeep(beatNumber, subNumber, destinationNode, time) {
 }
 
 // Sound Synthesizer 2: Woodblock (Two sine waves with quick harmonic blend + strike click)
-function playWoodblock(beatNumber, subNumber, destinationNode, time) {
+function playWoodblock(beatNumber, subNumber, destinationNode, time, duration) {
   const osc1 = audioContext.createOscillator();
   const osc2 = audioContext.createOscillator();
   const clickOsc = audioContext.createOscillator(); // High-frequency mallet strike click
@@ -608,14 +604,6 @@ function playWoodblock(beatNumber, subNumber, destinationNode, time) {
   osc2.frequency.setValueAtTime(freq2, time);
   clickOsc.frequency.setValueAtTime(clickFreq, time);
   
-  // Anchor volume envelope decay to make it robust and prevent browser bugs
-  const noteVolume = destinationNode.gain.value;
-  destinationNode.gain.cancelScheduledValues(time);
-  destinationNode.gain.setValueAtTime(noteVolume, time);
-  
-  const duration = subNumber > 0 ? 0.03 : 0.05;
-  destinationNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-  
   // Create click gain for high frequency strike click (lasts only 5ms)
   const clickGain = audioContext.createGain();
   clickGain.gain.setValueAtTime(0.8, time);
@@ -642,7 +630,7 @@ function playWoodblock(beatNumber, subNumber, destinationNode, time) {
 }
 
 // Sound Synthesizer 3: Snare Rimshot (Bandpass filtered white noise burst + punchy body)
-function playRimshot(beatNumber, subNumber, destinationNode, time) {
+function playRimshot(beatNumber, subNumber, destinationNode, time, duration) {
   // Combine noise burst with brief high frequency body
   const noiseSource = audioContext.createBufferSource();
   noiseSource.buffer = noiseBuffer;
@@ -673,14 +661,6 @@ function playRimshot(beatNumber, subNumber, destinationNode, time) {
   bodyOsc.type = "triangle";
   bodyOsc.frequency.setValueAtTime(bodyFreq, time);
   bodyOsc.connect(destinationNode);
-  
-  // Anchor volume envelope decay to make it robust and prevent browser bugs
-  const noteVolume = destinationNode.gain.value;
-  destinationNode.gain.cancelScheduledValues(time);
-  destinationNode.gain.setValueAtTime(noteVolume, time);
-  
-  const duration = subNumber > 0 ? 0.035 : 0.05;
-  destinationNode.gain.exponentialRampToValueAtTime(0.0001, time + duration);
   
   noiseSource.start(time);
   bodyOsc.start(time);
@@ -963,6 +943,7 @@ function pulseCat(isAccent) {
 let metronomeAnalyser = null;
 let canvasBuffer = null;
 let masterCompressor = null;
+let bluetoothKeepAliveOsc = null;
 
 // Helper to ensure audio context is running and active
 async function ensureAudioContext() {
@@ -987,6 +968,21 @@ async function ensureAudioContext() {
     masterCompressor.connect(audioContext.destination);
 
     canvasBuffer = new Uint8Array(metronomeAnalyser.frequencyBinCount);
+
+    // Create an inaudible subsonic 15Hz wave to keep Bluetooth earphones from gating/sleeping
+    try {
+      bluetoothKeepAliveOsc = audioContext.createOscillator();
+      bluetoothKeepAliveOsc.frequency.setValueAtTime(15, audioContext.currentTime); // 15Hz is below human hearing (20Hz)
+      
+      const keepAliveGain = audioContext.createGain();
+      keepAliveGain.gain.setValueAtTime(0.001, audioContext.currentTime); // extremely quiet, completely inaudible
+      
+      bluetoothKeepAliveOsc.connect(keepAliveGain);
+      keepAliveGain.connect(audioContext.destination);
+      bluetoothKeepAliveOsc.start();
+    } catch (e) {
+      console.warn("Could not start Bluetooth keep-alive oscillator:", e);
+    }
   }
   if (audioContext.state === "suspended") {
     await audioContext.resume();
